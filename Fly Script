@@ -1,13 +1,12 @@
 local Players = game:GetService("Players")
 local player = Players.LocalPlayer
 
-local FlyModule = require(path_to_FlyModule) -- change this to your module's location
+local FlyModule = loadstring(game:HttpGet("YOUR_RAW_GITHUB_URL_HERE"))()
 local fly = FlyModule.new(player)
 
 local FlySpeed = 10
 local isFlying = false
 
--- Example toggling fly
 PlayerSection:Toggle("Fly", function(isToggled)
     isFlying = isToggled
     if isFlying then
@@ -18,7 +17,6 @@ PlayerSection:Toggle("Fly", function(isToggled)
     end
 end)
 
--- Example slider for fly speed
 PlayerSection:Slider("Fly Speed", 1, 100, function(value)
     FlySpeed = value
     if isFlying then
