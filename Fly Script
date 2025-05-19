@@ -1,1 +1,27 @@
+local Players = game:GetService("Players")
+local player = Players.LocalPlayer
 
+local FlyModule = require(path_to_FlyModule) -- change this to your module's location
+local fly = FlyModule.new(player)
+
+local FlySpeed = 10
+local isFlying = false
+
+-- Example toggling fly
+PlayerSection:Toggle("Fly", function(isToggled)
+    isFlying = isToggled
+    if isFlying then
+        fly:SetSpeed(FlySpeed)
+        fly:Start()
+    else
+        fly:Stop()
+    end
+end)
+
+-- Example slider for fly speed
+PlayerSection:Slider("Fly Speed", 1, 100, function(value)
+    FlySpeed = value
+    if isFlying then
+        fly:SetSpeed(FlySpeed)
+    end
+end)
