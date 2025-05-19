@@ -1,94 +1,65 @@
 -- SimpleFlyModule.lua
-local FlyModule = {}
+local SimpleFly = {}
 
 local Players = game:GetService("Players")
+local UserInputService = game:GetService("UserInputService")
 local RunService = game:GetService("RunService")
 
 local player = Players.LocalPlayer
-local mouse = player:GetMouse()
-local character, humanoid, rootPart
+local character = player.Character or player.CharacterAdded:Wait()
+local humanoid = character:WaitForChild("Humanoid")
+local rootPart = character:WaitForChild("HumanoidRootPart")
 
 local flying = false
-local speed = 50
+local flySpeed = 50
 
-local bg -- BodyGyro
-local bv -- BodyVelocity
+local bodyVelocity = Instance.new("BodyVelocity")
+bodyVelocity.MaxForce = Vector3.new(1e5, 1e5, 1e5)
+bodyVelocity.Velocity = Vector3.new(0, 0, 0)
+bodyVelocity.Parent = rootPart
 
-local control = {forward = 0, backward = 0, left = 0, right = 0}
-local lastControl = {forward = 0, backward = 0, left = 0, right = 0}
-
-function FlyModule:SetSpeed(newSpeed)
-    speed = newSpeed
+function SimpleFly:SetSpeed(speed)
+    flySpeed = speed
 end
 
-local function onInput(key, isDown)
-    key = key:lower()
-    local val = isDown and 1 or 0
-
-    if key == "w" then control.forward = val end
-    if key == "s" then control.backward = val end
-    if key == "a" then control.left = val end
-    if key == "d" then control.right = val end
+function SimpleFly:Toggle()
+    flying = not flying
+    if not flying then
+        bodyVelocity.Velocity = Vector3.new(0, 0, 0)
+    end
 end
 
-function FlyModule:Start()
-    if flying then return end
-
-    character = player.Character or player.CharacterAdded:Wait()
-    humanoid = character:FindFirstChildOfClass("Humanoid")
-    rootPart = character:FindFirstChild("HumanoidRootPart") or character:FindFirstChild("Torso") or character:FindFirstChild("UpperTorso")
-    if not rootPart or not humanoid then return end
-
+-- Optional: explicit start/stop
+function SimpleFly:Start()
     flying = true
-    control = {forward = 0, backward = 0, left = 0, right = 0}
-    lastControl = {forward = 0, backward = 0, left = 0, right = 0}
-
-    bg = Instance.new("BodyGyro", rootPart)
-    bg.P = 9000
-    bg.maxTorque = Vector3.new(9e9, 9e9, 9e9)
-    bg.cframe = rootPart.CFrame
-
-    bv = Instance.new("BodyVelocity", rootPart)
-    bv.maxForce = Vector3.new(9e9, 9e9, 9e9)
-    bv.velocity = Vector3.new(0, 0, 0)
-
-    humanoid.PlatformStand = true
-
-    mouse.KeyDown:Connect(function(key) onInput(key, true) end)
-    mouse.KeyUp:Connect(function(key) onInput(key, false) end)
-
-    RunService:BindToRenderStep("Fly", Enum.RenderPriority.Camera.Value + 1, function()
-        if not flying then return end
-
-        local camCF = workspace.CurrentCamera.CFrame
-        local moveVec = Vector3.new()
-
-        moveVec = moveVec + camCF.LookVector * (control.forward - control.backward)
-        moveVec = moveVec + camCF.RightVector * (control.right - control.left)
-        moveVec = moveVec.Unit
-
-        if moveVec.Magnitude > 0 then
-            lastControl = {forward = control.forward, backward = control.backward, left = control.left, right = control.right}
-        else
-            moveVec = camCF.LookVector * (lastControl.forward - lastControl.backward) + camCF.RightVector * (lastControl.right - lastControl.left)
-            moveVec = moveVec.Unit
-        end
-
-        bv.velocity = moveVec * speed
-        bg.cframe = camCF
-
-        -- Keep the player slightly above the ground to avoid falling through
-        bv.velocity = Vector3.new(bv.velocity.X, 0.1, bv.velocity.Z)
-    end)
 end
 
-function FlyModule:Stop()
-    if not flying then return end
+function SimpleFly:Stop()
     flying = false
-    humanoid.PlatformStand = false
-    if bg then bg:Destroy() end
-    if bv then bv:Destroy() end
-    RunService:UnbindFromRenderStep("Fly")
+    bodyVelocity.Velocity = Vector3.new(0, 0, 0)
 end
 
-return FlyModule
+-- Connect key F to toggle fly automatically if you want
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+    if gameProcessed then return end
+    if input.KeyCode == Enum.KeyCode.F then
+        SimpleFly:Toggle()
+    end
+end)
+
+RunService.RenderStepped:Connect(function()
+    if flying then
+        local moveDirection = humanoid.MoveDirection
+        local velocity = Vector3.new(moveDirection.X * flySpeed, 0, moveDirection.Z * flySpeed)
+        if UserInputService:IsKeyDown(Enum.KeyCode.Space) then
+            velocity = velocity + Vector3.new(0, flySpeed, 0)
+        elseif UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) then
+            velocity = velocity - Vector3.new(0, flySpeed, 0)
+        end
+        bodyVelocity.Velocity = velocity
+    else
+        bodyVelocity.Velocity = Vector3.new(0, 0, 0)
+    end
+end)
+
+return SimpleFly
