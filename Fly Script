@@ -1,78 +1,175 @@
 -- FlyModule.lua
 local FlyModule = {}
-FlyModule.FlySpeed = 10
+FlyModule.__index = FlyModule
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+
+local player = Players.LocalPlayer
+local char = player.Character or player.CharacterAdded:Wait()
+local hum = char:FindFirstChildWhichIsA("Humanoid")
+local rootPart = char:FindFirstChild("HumanoidRootPart") or char:FindFirstChild("Torso") or char:FindFirstChild("UpperTorso")
+
+FlyModule.FlySpeed = 50
 FlyModule.Flying = false
 
-local player = game.Players.LocalPlayer
-local character = player.Character or player.CharacterAdded:Wait()
-local humanoid = character:WaitForChild("Humanoid")
-local runService = game:GetService("RunService")
-local uis = game:GetService("UserInputService")
+local ctrl = {f = 0, b = 0, l = 0, r = 0}
+local lastctrl = {f = 0, b = 0, l = 0, r = 0}
+local speed = 0
+local maxSpeed = 50
 
-local bodyVelocity
-local connection
+local bg, bv
+local heartbeatConnection
 
-function FlyModule:SetSpeed(speed)
-    self.FlySpeed = speed
-    if bodyVelocity then
-        bodyVelocity.MaxForce = Vector3.new(1e5, 1e5, 1e5)
-        bodyVelocity.Velocity = Vector3.new(0, 0, 0)
+-- Helper to enable flying physics
+local function setupFlyingParts()
+    if not rootPart then
+        rootPart = char:FindFirstChild("HumanoidRootPart") or char:FindFirstChild("Torso") or char:FindFirstChild("UpperTorso")
+        if not rootPart then
+            error("FlyModule: Could not find root part for flying")
+        end
     end
+
+    bg = Instance.new("BodyGyro")
+    bg.P = 9e4
+    bg.maxTorque = Vector3.new(9e9, 9e9, 9e9)
+    bg.cframe = rootPart.CFrame
+    bg.Parent = rootPart
+
+    bv = Instance.new("BodyVelocity")
+    bv.velocity = Vector3.new(0, 0.1, 0)
+    bv.maxForce = Vector3.new(9e9, 9e9, 9e9)
+    bv.Parent = rootPart
+end
+
+-- Cleanup flying physics
+local function cleanupFlyingParts()
+    if bg then
+        bg:Destroy()
+        bg = nil
+    end
+    if bv then
+        bv:Destroy()
+        bv = nil
+    end
+end
+
+-- Flying update loop
+local function flyLoop(self)
+    while self.Flying and hum and rootPart and hum.Health > 0 do
+        RunService.RenderStepped:Wait()
+
+        if ctrl.l + ctrl.r ~= 0 or ctrl.f + ctrl.b ~= 0 then
+            speed = speed + 0.5 + (speed / maxSpeed)
+            if speed > maxSpeed then
+                speed = maxSpeed
+            end
+        elseif speed ~= 0 then
+            speed = speed - 1
+            if speed < 0 then speed = 0 end
+        end
+
+        if ctrl.l + ctrl.r ~= 0 or ctrl.f + ctrl.b ~= 0 then
+            bv.velocity = ((workspace.CurrentCamera.CFrame.LookVector * (ctrl.f + ctrl.b)) + 
+                          ((workspace.CurrentCamera.CFrame * CFrame.new(ctrl.l + ctrl.r, (ctrl.f + ctrl.b) * 0.2, 0).p) - workspace.CurrentCamera.CFrame.p)) * speed
+            lastctrl = {f = ctrl.f, b = ctrl.b, l = ctrl.l, r = ctrl.r}
+        elseif speed ~= 0 then
+            bv.velocity = ((workspace.CurrentCamera.CFrame.LookVector * (lastctrl.f + lastctrl.b)) + 
+                          ((workspace.CurrentCamera.CFrame * CFrame.new(lastctrl.l + lastctrl.r, (lastctrl.f + lastctrl.b) * 0.2, 0).p) - workspace.CurrentCamera.CFrame.p)) * speed
+        else
+            bv.velocity = Vector3.new(0, 0, 0)
+        end
+
+        bg.cframe = workspace.CurrentCamera.CFrame * CFrame.Angles(-math.rad((ctrl.f + ctrl.b) * 50 * speed / maxSpeed), 0, 0)
+    end
+end
+
+-- Input handlers for movement controls
+local UserInputService = game:GetService("UserInputService")
+
+function FlyModule:BindControls()
+    UserInputService.InputBegan:Connect(function(input, gameProcessed)
+        if gameProcessed then return end
+        if input.UserInputType == Enum.UserInputType.Keyboard then
+            if input.KeyCode == Enum.KeyCode.W then
+                ctrl.f = 1
+            elseif input.KeyCode == Enum.KeyCode.S then
+                ctrl.b = -1
+            elseif input.KeyCode == Enum.KeyCode.A then
+                ctrl.l = -1
+            elseif input.KeyCode == Enum.KeyCode.D then
+                ctrl.r = 1
+            elseif input.KeyCode == Enum.KeyCode.Space then
+                -- Go up
+                rootPart.Velocity = rootPart.Velocity + Vector3.new(0, self.FlySpeed / 2, 0)
+            elseif input.KeyCode == Enum.KeyCode.LeftControl then
+                -- Go down
+                rootPart.Velocity = rootPart.Velocity + Vector3.new(0, -self.FlySpeed / 2, 0)
+            end
+        end
+    end)
+
+    UserInputService.InputEnded:Connect(function(input, gameProcessed)
+        if gameProcessed then return end
+        if input.UserInputType == Enum.UserInputType.Keyboard then
+            if input.KeyCode == Enum.KeyCode.W then
+                ctrl.f = 0
+            elseif input.KeyCode == Enum.KeyCode.S then
+                ctrl.b = 0
+            elseif input.KeyCode == Enum.KeyCode.A then
+                ctrl.l = 0
+            elseif input.KeyCode == Enum.KeyCode.D then
+                ctrl.r = 0
+            end
+        end
+    end)
 end
 
 function FlyModule:Start()
     if self.Flying then return end
-    self.Flying = true
-    
-    if not bodyVelocity then
-        bodyVelocity = Instance.new("BodyVelocity")
-        bodyVelocity.MaxForce = Vector3.new(1e5, 1e5, 1e5)
-        bodyVelocity.Velocity = Vector3.new(0, 0, 0)
-        bodyVelocity.Parent = character.HumanoidRootPart
+
+    char = player.Character or player.CharacterAdded:Wait()
+    hum = char:FindFirstChildWhichIsA("Humanoid")
+    rootPart = char:FindFirstChild("HumanoidRootPart") or char:FindFirstChild("Torso") or char:FindFirstChild("UpperTorso")
+
+    if not hum or not rootPart then
+        warn("FlyModule: Cannot start fly, Humanoid or root part missing")
+        return
     end
-    
-    connection = runService.RenderStepped:Connect(function()
-        if not self.Flying then return end
-        
-        local moveDirection = Vector3.new()
-        if uis:IsKeyDown(Enum.KeyCode.W) then
-            moveDirection = moveDirection + workspace.CurrentCamera.CFrame.LookVector
-        end
-        if uis:IsKeyDown(Enum.KeyCode.S) then
-            moveDirection = moveDirection - workspace.CurrentCamera.CFrame.LookVector
-        end
-        if uis:IsKeyDown(Enum.KeyCode.A) then
-            moveDirection = moveDirection - workspace.CurrentCamera.CFrame.RightVector
-        end
-        if uis:IsKeyDown(Enum.KeyCode.D) then
-            moveDirection = moveDirection + workspace.CurrentCamera.CFrame.RightVector
-        end
-        if uis:IsKeyDown(Enum.KeyCode.Space) then
-            moveDirection = moveDirection + Vector3.new(0, 1, 0)
-        end
-        if uis:IsKeyDown(Enum.KeyCode.LeftControl) then
-            moveDirection = moveDirection - Vector3.new(0, 1, 0)
-        end
-        
-        moveDirection = moveDirection.Unit
-        if moveDirection.Magnitude == 0 then
-            bodyVelocity.Velocity = Vector3.new(0, 0, 0)
-        else
-            bodyVelocity.Velocity = moveDirection * self.FlySpeed
-        end
+
+    self.Flying = true
+    hum.PlatformStand = true
+
+    setupFlyingParts()
+
+    -- Bind inputs once (you can move this outside if you want to bind only once)
+    if not self._controlsBound then
+        self:BindControls()
+        self._controlsBound = true
+    end
+
+    heartbeatConnection = RunService.RenderStepped:Connect(function()
+        flyLoop(self)
     end)
 end
 
 function FlyModule:Stop()
     if not self.Flying then return end
     self.Flying = false
-    if connection then
-        connection:Disconnect()
-        connection = nil
+    if heartbeatConnection then
+        heartbeatConnection:Disconnect()
+        heartbeatConnection = nil
     end
-    if bodyVelocity then
-        bodyVelocity:Destroy()
-        bodyVelocity = nil
+    cleanupFlyingParts()
+    if hum then
+        hum.PlatformStand = false
+    end
+end
+
+function FlyModule:SetSpeed(speed)
+    if type(speed) == "number" and speed > 0 then
+        self.FlySpeed = speed
+        maxSpeed = speed
     end
 end
 
