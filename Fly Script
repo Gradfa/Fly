@@ -1,65 +1,79 @@
--- SimpleFlyModule.lua
-local SimpleFly = {}
+-- FlyModule.lua
+local FlyModule = {}
+FlyModule.FlySpeed = 10
+FlyModule.Flying = false
 
-local Players = game:GetService("Players")
-local UserInputService = game:GetService("UserInputService")
-local RunService = game:GetService("RunService")
-
-local player = Players.LocalPlayer
+local player = game.Players.LocalPlayer
 local character = player.Character or player.CharacterAdded:Wait()
 local humanoid = character:WaitForChild("Humanoid")
-local rootPart = character:WaitForChild("HumanoidRootPart")
+local runService = game:GetService("RunService")
+local uis = game:GetService("UserInputService")
 
-local flying = false
-local flySpeed = 50
+local bodyVelocity
+local connection
 
-local bodyVelocity = Instance.new("BodyVelocity")
-bodyVelocity.MaxForce = Vector3.new(1e5, 1e5, 1e5)
-bodyVelocity.Velocity = Vector3.new(0, 0, 0)
-bodyVelocity.Parent = rootPart
-
-function SimpleFly:SetSpeed(speed)
-    flySpeed = speed
-end
-
-function SimpleFly:Toggle()
-    flying = not flying
-    if not flying then
+function FlyModule:SetSpeed(speed)
+    self.FlySpeed = speed
+    if bodyVelocity then
+        bodyVelocity.MaxForce = Vector3.new(1e5, 1e5, 1e5)
         bodyVelocity.Velocity = Vector3.new(0, 0, 0)
     end
 end
 
--- Optional: explicit start/stop
-function SimpleFly:Start()
-    flying = true
-end
-
-function SimpleFly:Stop()
-    flying = false
-    bodyVelocity.Velocity = Vector3.new(0, 0, 0)
-end
-
--- Connect key F to toggle fly automatically if you want
-UserInputService.InputBegan:Connect(function(input, gameProcessed)
-    if gameProcessed then return end
-    if input.KeyCode == Enum.KeyCode.F then
-        SimpleFly:Toggle()
+function FlyModule:Start()
+    if self.Flying then return end
+    self.Flying = true
+    
+    if not bodyVelocity then
+        bodyVelocity = Instance.new("BodyVelocity")
+        bodyVelocity.MaxForce = Vector3.new(1e5, 1e5, 1e5)
+        bodyVelocity.Velocity = Vector3.new(0, 0, 0)
+        bodyVelocity.Parent = character.HumanoidRootPart
     end
-end)
-
-RunService.RenderStepped:Connect(function()
-    if flying then
-        local moveDirection = humanoid.MoveDirection
-        local velocity = Vector3.new(moveDirection.X * flySpeed, 0, moveDirection.Z * flySpeed)
-        if UserInputService:IsKeyDown(Enum.KeyCode.Space) then
-            velocity = velocity + Vector3.new(0, flySpeed, 0)
-        elseif UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) then
-            velocity = velocity - Vector3.new(0, flySpeed, 0)
+    
+    connection = runService.RenderStepped:Connect(function()
+        if not self.Flying then return end
+        
+        local moveDirection = Vector3.new()
+        if uis:IsKeyDown(Enum.KeyCode.W) then
+            moveDirection = moveDirection + workspace.CurrentCamera.CFrame.LookVector
         end
-        bodyVelocity.Velocity = velocity
-    else
-        bodyVelocity.Velocity = Vector3.new(0, 0, 0)
-    end
-end)
+        if uis:IsKeyDown(Enum.KeyCode.S) then
+            moveDirection = moveDirection - workspace.CurrentCamera.CFrame.LookVector
+        end
+        if uis:IsKeyDown(Enum.KeyCode.A) then
+            moveDirection = moveDirection - workspace.CurrentCamera.CFrame.RightVector
+        end
+        if uis:IsKeyDown(Enum.KeyCode.D) then
+            moveDirection = moveDirection + workspace.CurrentCamera.CFrame.RightVector
+        end
+        if uis:IsKeyDown(Enum.KeyCode.Space) then
+            moveDirection = moveDirection + Vector3.new(0, 1, 0)
+        end
+        if uis:IsKeyDown(Enum.KeyCode.LeftControl) then
+            moveDirection = moveDirection - Vector3.new(0, 1, 0)
+        end
+        
+        moveDirection = moveDirection.Unit
+        if moveDirection.Magnitude == 0 then
+            bodyVelocity.Velocity = Vector3.new(0, 0, 0)
+        else
+            bodyVelocity.Velocity = moveDirection * self.FlySpeed
+        end
+    end)
+end
 
-return SimpleFly
+function FlyModule:Stop()
+    if not self.Flying then return end
+    self.Flying = false
+    if connection then
+        connection:Disconnect()
+        connection = nil
+    end
+    if bodyVelocity then
+        bodyVelocity:Destroy()
+        bodyVelocity = nil
+    end
+end
+
+return FlyModule
