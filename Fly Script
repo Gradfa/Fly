@@ -1,25 +1,103 @@
+-- This script should be exactly like the module I gave you earlier,
+-- but it must end with `return FlyModule`
+
+local FlyModule = {}
+FlyModule.__index = FlyModule
+
+local UserInputService = game:GetService("UserInputService")
+local RunService = game:GetService("RunService")
 local Players = game:GetService("Players")
-local player = Players.LocalPlayer
 
-local FlyModule = loadstring(game:HttpGet("YOUR_RAW_GITHUB_URL_HERE"))()
-local fly = FlyModule.new(player)
+function FlyModule.new(player)
+    local self = setmetatable({}, FlyModule)
+    self.player = player
+    self.flying = false
+    self.speed = 50
+    self.bodyVelocity = nil
+    self.connection = nil
 
-local FlySpeed = 10
-local isFlying = false
-
-PlayerSection:Toggle("Fly", function(isToggled)
-    isFlying = isToggled
-    if isFlying then
-        fly:SetSpeed(FlySpeed)
-        fly:Start()
-    else
-        fly:Stop()
+    local function setupCharacter(character)
+        self.character = character
+        self.humanoid = character:WaitForChild("Humanoid")
+        self.rootPart = character:WaitForChild("HumanoidRootPart")
     end
-end)
 
-PlayerSection:Slider("Fly Speed", 1, 100, function(value)
-    FlySpeed = value
-    if isFlying then
-        fly:SetSpeed(FlySpeed)
+    if player.Character then
+        setupCharacter(player.Character)
     end
-end)
+
+    player.CharacterAdded:Connect(setupCharacter)
+
+    return self
+end
+
+function FlyModule:SetSpeed(speed)
+    self.speed = speed
+end
+
+function FlyModule:Start()
+    if self.flying then return end
+    if not self.character or not self.humanoid or not self.rootPart then return end
+
+    self.flying = true
+
+    self.bodyVelocity = Instance.new("BodyVelocity")
+    self.bodyVelocity.MaxForce = Vector3.new(1e5, 1e5, 1e5)
+    self.bodyVelocity.Velocity = Vector3.new(0,0,0)
+    self.bodyVelocity.Parent = self.rootPart
+
+    self.humanoid.PlatformStand = true
+
+    self.connection = RunService.RenderStepped:Connect(function()
+        if not self.flying then return end
+
+        local moveDirection = Vector3.new()
+        local cameraCFrame = workspace.CurrentCamera.CFrame
+
+        if UserInputService:IsKeyDown(Enum.KeyCode.W) then
+            moveDirection = moveDirection + cameraCFrame.LookVector
+        end
+        if UserInputService:IsKeyDown(Enum.KeyCode.S) then
+            moveDirection = moveDirection - cameraCFrame.LookVector
+        end
+        if UserInputService:IsKeyDown(Enum.KeyCode.A) then
+            moveDirection = moveDirection - cameraCFrame.RightVector
+        end
+        if UserInputService:IsKeyDown(Enum.KeyCode.D) then
+            moveDirection = moveDirection + cameraCFrame.RightVector
+        end
+        if UserInputService:IsKeyDown(Enum.KeyCode.Space) then
+            moveDirection = moveDirection + Vector3.new(0, 1, 0)
+        end
+        if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) then
+            moveDirection = moveDirection - Vector3.new(0, 1, 0)
+        end
+
+        if moveDirection.Magnitude > 0 then
+            self.bodyVelocity.Velocity = moveDirection.Unit * self.speed
+        else
+            self.bodyVelocity.Velocity = Vector3.new(0,0,0)
+        end
+    end)
+end
+
+function FlyModule:Stop()
+    if not self.flying then return end
+    self.flying = false
+
+    if self.humanoid then
+        self.humanoid.PlatformStand = false
+    end
+
+    if self.bodyVelocity then
+        self.bodyVelocity:Destroy()
+        self.bodyVelocity = nil
+    end
+
+    if self.connection then
+        self.connection:Disconnect()
+        self.connection = nil
+    end
+end
+
+return FlyModule
